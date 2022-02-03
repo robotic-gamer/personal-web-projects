@@ -1,0 +1,2432 @@
+<!DOCTYPE html>
+<html>
+
+    <head>
+        <script>
+		
+//global variables
+//width and height of canvas
+const default_canvas_width=1500;
+const default_canvas_height=700;
+var canvas_width;
+var canvas_height;
+
+//number of bits you can store in a number
+//on paper should be 52
+//it was reduced to 30 due to errors
+//my best guess is bit shifts are interacting with the non-number bits like the exponent
+//causing errors. most likely reducing the number below 32 (half of the full 64) prevents the non-number bits
+//from interacting with the code but that is just a guess 
+//I'll try and make use of the full 64 bits when it comes time to polish
+//this is a good enough solution for practical purposes
+const max_bit_per_number=30;
+
+//blocker array essentally stores where path blocking stuff are
+//note the lander is a seperate thing entirely
+//y dimension is canvas_height + 1 because "canvas_height" is a valid y coordinate
+//x dimension is  Math.ceil(default_canvas_width/max_bit_per_number)
+//this is to reduce size of needed x dimension by 30
+//this changes size (with default dimensions) from 1,050,000 numbers to 35,000 numbers, a very large savings
+//note the max number intended to be accessed is the max_x/y -1
+//also as far as functions that don't interact with blocker_array directly are concerned
+//canvas_width and canvas_height are the max dimensions of what can be read or written
+var blocker_array;
+var blocker_array_max_x;
+var blocker_array_max_y;
+
+//size 0 block is just a block consiting of whatever the average block was
+const char_size0_width=3;
+const char_size0_height=4;
+
+//size 1 is min size, larger sizes are streched size 1
+//ie
+//char_sizeN_width=char_size1_width*N;
+//char_sizeN_height=char_size1_height*N;
+const char_size1_width=7;
+const char_size1_height=9;
+
+
+
+//character for printing a solid block
+const print_block_char = "$";
+
+//counts how many pixels are left on screen
+var pixel_screen_count=0;
+
+//ball is 5 pixels wide
+//var ball_width=5;
+
+//relative to center
+var ball_x_position;
+var ball_y_position;
+
+//note velocity is a bit of a misnomer
+//what it it actually means is how many pixels it
+//goes in a direction before passing it to the other
+//direction
+var ball_x_velocity;
+var ball_y_velocity;
+
+//must always be true
+//max_ball_speed = ball_x_velocity + ball_y_velocity
+const max_ball_speed=10;
+const ball_size=5;
+
+//number of milseconds per ball move
+const time_per_inc=75;
+
+
+var paddle_x_position;
+
+//pretty much a constant
+var paddle_y_position;
+
+const paddle_x_size=50;
+const paddle_y_size=3;
+
+//determines the number of pixels it moves
+//per character "placed"
+const paddle_max_speed=5;
+//left
+const key_press_left="ArrowLeft";
+//right
+const key_press_right="ArrowRight";
+//space
+const key_press_space="Space";
+//no key press
+const key_press_none="";
+
+var key_press_status=key_press_none;
+
+const game_state_awaiting_space="awaiting space";
+const game_state_running ="game running";
+const game_state_over="game over";
+
+
+
+var game_state=game_state_awaiting_space;
+
+var ball_running_id;
+
+
+/*
+1. What is the title of your project 
+project portfolio lander
+2. What will be the features?
+a lander mini games
+3. By when will you implement these features (date)
+2 weeks (jan 28)
+4. Push/put your projects on Github
+
+*/
+
+/*
+1. Make a list of features for your project
+2. Set deliverables/tasks with a deadline
+3. Set up enviornment
+4. Set up a github repository
+
+
+
+
+*/
+window.onload = function main()
+{
+    console.log("start");
+    //put a canvas of user specified size into html page
+    define_html_canvas();
+    //set all bits to 0
+    init_blocker_array();
+    //write all text to screen
+    print_all_text();
+
+    init_ball_and_paddle();
+    draw_paddle();
+    draw_ball();
+
+
+};
+
+function print_all_text()
+{
+    write_string("About Stephen Ward",3,525,20);
+    write_string("general info",3,575,100);
+    write_string
+    (
+        "Hello my name is Stephen Ward. I am a 26 year old who is learning to code websites for a living.\n"+
+        "I am a fair bit introverted but I am comfortable expressing my ideas with others via any medium\n"+
+        "(calls, emails, texts video calls etc.). Currently I live on a farm with my parents which is \n" +
+        "about 20 minutes away from Brockville, Ontario. My enjoyment of coding seems to stem from its\n" +
+        "                            simiilarity to open ended puzzles.",
+        1,400,150
+    );
+    write_string("Previous experience",3,450,200);
+    write_string(">Current schooling on coding",2,350,240);
+    write_string("*Currently I am taking online web site coding courses provided by Code Youth.",1,380,265);
+    write_string(">Past schooling on coding",2,350,285);
+    write_string
+    (
+        "*various high school courses at BCI about coding.\n"+
+        "*first year engineering and a year of comptuter programming at Queens University.\n"+
+        "*first year at computer programming at Algonquin College in Ottawa.\n"+
+        "*writing a small .json mod for cataclysm dark days ahead (simple_additions).\n"+
+        "*various self teaching in coding primarily in C.",
+        1,380,305
+    );
+    write_string(">Previous work experience",2,350,360);
+    write_string("*Paid",1,380,385);
+    write_string
+    (
+        ">I have worked at Eastern Independant Telecom as a refurbishing technician.\n"+
+        ">In the past I worked at Treasure Hunt as a stocker.",
+        1,410,400
+    );
+    write_string("*Volunteer",1,380,420);
+    write_string
+    (
+        ">Volunteered at the Brockville Library.\n"+
+        ">Volunteered at Loaves and Fishes",
+        1,410,430
+    );
+    write_string("Future plans",3,575,470);
+    write_string("Reasons why I want to code websites",1,580,500);
+    write_string
+    (
+        ">working in coding is something I enjoy doing\n"+
+        ">remote work allows me to avoid a +40 minute commute\n"+
+        ">In the long run I plan to use my knowledge in coding websites to develop\n"+
+        " my own rogue-like game in my free time as a hobby",
+        1,500,520
+    );
+
+    write_string("press space to start",2,800,600);
+
+
+
+    //made redundant by making drawing to canvas automatic on blocker_array changes
+    //draw_blocker_array(); 
+}
+
+
+document.addEventListener('keydown', (event) => 
+{
+    var name = event.key;
+    var code = event.code;
+    // Alert the key name and key code on keydown
+    //alert(`Key pressed ${name} \r\n Key code value: ${code}`);
+
+    key_press_status=code;
+
+
+    if(game_state!==game_state_over)
+    {
+        move_paddle();
+    }
+   // move_ball();
+
+    if(key_press_status===key_press_space)
+    {
+        if(game_state===game_state_over)
+        {
+            clear_blocker_array();
+            print_all_text();
+            init_ball_and_paddle();
+            draw_paddle();
+            draw_ball();
+            game_state=game_state_awaiting_space;
+            
+        }
+        else if(game_state===game_state_awaiting_space)
+        {
+            game_state=game_state_running;
+            ball_running_id= setInterval(() => { move_ball() }, time_per_inc);
+        }
+    }
+
+}, false);
+
+
+
+
+
+
+
+function move_ball()
+{
+    //checking to see if left board
+    if((ball_y_position+ball_size)>=canvas_height)
+    {
+    
+        run_game_over();
+        return;
+    }
+
+
+
+    let x_move_count=0;
+    let y_move_count=0;
+
+    for(let move_count=0;move_count<max_ball_speed;move_count++)
+    {
+        let check_ball =check_ball_collison();
+        if(check_ball.collision)
+        {
+           // console.log(check_ball);
+            handle_ball_collision(check_ball.x,check_ball.y);
+        }
+        try_delete_at(check_ball.x+ball_x_position,check_ball.y+ball_y_position);
+        if((x_move_count/ball_x_velocity)<=(y_move_count/ball_y_velocity))
+        {
+            increment_ball_x();
+            x_move_count++;
+        }
+        else
+        {
+            increment_ball_y();
+            y_move_count++;
+        }
+
+        //checking to see if left board
+        if((ball_y_position+ball_size)>=canvas_height)
+        {
+            run_game_over();
+            return;
+        }
+    }
+}
+
+function run_game_over()
+{
+    game_state=game_state_over;
+    clearInterval(ball_running_id);
+    clear_blocker_array();
+    write_string("      Game over\npress space to restart",4,400,300);
+    console.log("game over");
+
+}
+
+
+function increment_ball_y()
+{
+    if(ball_y_velocity===0)
+    {
+        return;
+    }
+    else if(ball_y_velocity>0)
+    {
+        erase_ball();
+        ball_y_position++;
+        draw_ball();
+    }
+    else if(ball_y_velocity<0)
+    {
+        erase_ball();
+        ball_y_position--;
+        
+        draw_ball();
+    }
+}
+
+function increment_ball_x()
+{
+    if(ball_x_velocity===0)
+    {
+        return;
+    }
+    else if(ball_x_velocity>0)
+    {
+        erase_ball();
+        ball_x_position++;
+        draw_ball();
+    }
+    else if(ball_x_velocity<0)
+    {
+        erase_ball();
+        ball_x_position--;
+        draw_ball();
+    }
+}
+
+function try_delete_at(target_x,target_y)
+{
+
+    //if not on blocker array
+    if(is_border(target_x,target_y))
+    {
+        return;
+    }
+    else if(read_blocker_array(target_x, target_y)===0)
+    {
+        return;
+    }
+    else if(is_part_of_paddle(target_x,target_y))
+    {
+        return;
+    }
+    else if(is_part_of_ball(target_x,target_y))
+    {
+        return;
+    }
+    else
+    {
+        write_zero_blocker_array(target_x, target_y);
+
+ 
+        try_delete_at(target_x-1,target_y-1);
+        try_delete_at(target_x-1,target_y);
+        try_delete_at(target_x-1,target_y+1);
+        try_delete_at(target_x,target_y-1);
+        //try_delete_at(target_x,target_y);
+        try_delete_at(target_x,target_y+1);
+        try_delete_at(target_x+1,target_y-1);
+        try_delete_at(target_x+1,target_y);
+        try_delete_at(target_x+1,target_y+1);
+    }
+
+}
+
+function is_border(target_x,target_y)
+{
+    if (target_y<=0)
+    {
+        return true;
+    }
+    else if(target_x<=0)
+    {
+        return true;
+    }
+    else if(target_x>=canvas_width)
+    {
+        return true;
+    }
+    return false;
+}
+
+
+
+function is_part_of_ball(target_x,target_y)
+{
+
+
+    if(target_y>=ball_y_position)
+    {
+        if(target_y<=(ball_y_position+ball_size))
+        {
+            if(target_x>=ball_x_position)
+            {
+                if(target_x<=(ball_x_position+ball_size))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function is_part_of_paddle(target_x,target_y)
+{
+
+
+    if(target_y>=paddle_y_position)
+    {
+        if(target_y<=(paddle_y_position+paddle_y_size))
+        {
+            if(target_x>=paddle_x_position)
+            {
+                if(target_x<=(paddle_x_position+paddle_x_size))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function handle_ball_collision(hit_x,hit_y)
+{
+
+    //shifting the numbers such that 0 implies a hit to the middle
+    hit_x-=Math.floor(ball_size/2);
+    hit_y-=Math.floor(ball_size/2);
+
+    let edge_num=Math.ceil(ball_size/2);
+
+    //hard to explain without pen and paper
+    //but the idea is to put the ball going away from where it hit
+    //x_speed is inverslly porportal to hit_x
+    //y_speed is inverslly porportal to hit_y
+    //at 0 the respective speed does not change and the other is now negative
+    //the sum of x_speed and y_speed must equal max_ball_speed
+
+
+    if(hit_x==0)
+    {
+        //ball_x_velocity=ball_x_velocity;
+        ball_y_velocity= -ball_y_velocity;
+        return;
+    }
+    if(hit_y==0)
+    {
+        ball_x_velocity= -ball_x_velocity;
+        //ball_y_velocity= ball_y_velocity;
+        return;
+    }
+
+    //left side
+    if(hit_x===-edge_num)
+    {
+
+        let y_mult=hit_y/edge_num;
+
+        ball_y_velocity=Math.floor((-y_mult)*Math.floor(max_ball_speed/2));
+        ball_x_velocity=max_ball_speed - Math.abs(ball_y_velocity);
+        return;
+    }
+    //right side
+    else if(hit_x=== edge_num)
+    {
+    
+        let y_mult=hit_y/edge_num;
+    
+        ball_y_velocity=Math.floor((-y_mult)*Math.floor(max_ball_speed/2));
+        ball_x_velocity=-(max_ball_speed - Math.abs(ball_y_velocity));
+        return;
+    }
+
+
+    //top
+    else if(hit_y===-edge_num)
+    {
+        let x_mult=hit_x/edge_num;
+
+        ball_x_velocity=Math.floor((-x_mult)*Math.floor(max_ball_speed/2));
+        ball_y_velocity=max_ball_speed - Math.abs(ball_x_velocity);
+        return;
+    }
+    //bottom
+    else if(hit_y===edge_num)
+    {
+        let x_mult=hit_x/edge_num;
+    
+        ball_x_velocity=Math.floor((-x_mult)*Math.floor(max_ball_speed/2));
+        ball_y_velocity=-(max_ball_speed - Math.abs(ball_x_velocity));
+        return;
+        
+    }
+    let random_shift=Math.floor((max_ball_speed/2)-max_ball_speed*Math.random());
+    ball_x_velocity+=random_shift;
+    ball_y_velocity-=random_shift;
+
+    console.log("random bounce!");
+}
+
+function check_ball_collison()
+{
+//////(-1)|(00)|(01)|(02)|(03)|(04)|(05)
+//(-1)    
+//----
+//(00)     ++++++++++++++++++++++++
+//----     ++++++++++++++++++++++++
+//(01)     ++++++++++++++++++++++++
+//----     ++++++++++++++++++++++++
+//(02)     ++++++++++++++++++++++++
+//----     ++++++++++++++++++++++++
+//(03)     ++++++++++++++++++++++++
+//----     ++++++++++++++++++++++++
+//(04)     ++++++++++++++++++++++++
+//----
+//(05)
+
+    //check top
+    let y=-1;
+    for(let x=-1; x < ball_size+1; x++)
+    {
+        if(is_blocker_here(x, y))
+        {
+            let return_object=
+            {
+                collision:true,
+                x:x,
+                y:y
+            };
+            return return_object;
+        }
+    }
+
+    //bottom
+    y=ball_size+1;
+    for(let x=-1; x < ball_size+1; x++)
+    {
+        if(is_blocker_here(x, y))
+        {
+            let return_object=
+            {
+                collision:true,
+                x:x,
+                y:y
+            };
+            return return_object;
+        }
+    }
+
+    //left side
+    let x=-1;
+    for(y=-1; y < ball_size+1; y++)
+    {
+        if(is_blocker_here(x, y))
+        {
+            let return_object=
+            {
+                collision:true,
+                x:x,
+                y:y
+            };
+            return return_object;
+        }
+    }
+
+    //right side
+    x=ball_size+1;
+    for(y=-1; y < ball_size+1; y++)
+    {
+        if(is_blocker_here(x, y))
+        {
+            let return_object=
+            {
+                collision:true,
+                x:x,
+                y:y
+            };
+            return return_object;
+        }
+    }
+
+    //no collision
+ 
+    let return_object=
+    {
+        collision:false,
+        x:-10,
+        y:-10
+    };
+    return return_object;
+}
+
+
+
+
+//returns true if there is a blocker
+function is_blocker_here(target_x, target_y)
+{
+    target_x+=ball_x_position;
+    target_y+=ball_y_position;
+    //checking border of canvas
+    if(target_x<0)
+    {
+        return true;
+    }
+    else if(target_x>canvas_width)
+    {
+        return true;
+    }
+    else if(target_y<0)
+    {
+        
+        return true;
+    }
+    else if(target_y>canvas_height)
+    {
+        //this is to allow it to go out of screen
+        return false;
+    }
+    else if(read_blocker_array(target_x, target_y)!=0)
+    {
+        //console.log(read_blocker_array(target_x, target_y));
+        return true;
+    }
+    return false;
+}
+
+
+
+function erase_ball()
+{
+    for(let y=0;y<=ball_size;y++)
+    {
+        for(let x=0;x<=ball_size;x++)
+        {
+            write_zero_blocker_array(x + ball_x_position, y + ball_y_position);
+        }
+    }
+}
+
+function draw_ball()
+{
+    for(let y=0;y<=ball_size;y++)
+    {
+        for(let x=0;x<=ball_size;x++)
+        {
+            write_one_blocker_array(x + ball_x_position, y + ball_y_position);
+        }
+    }
+}
+
+function move_paddle()
+{
+    if(key_press_status==="ArrowLeft")
+    {
+        if(check_paddle_left_wall())
+        {
+            for(let i=0;i<paddle_max_speed;i++)
+            {
+                //duplicate paddle wall check is to prevent paddle
+                //embeding itself in walls by a few pixels
+                if(check_paddle_left_wall())
+                {
+                    erase_paddle_right_end();
+                    draw_paddle_left_end();
+                    paddle_x_position--;
+                }
+            }
+
+        }
+    }
+    else if(key_press_status==="ArrowRight")
+    {
+        if(check_paddle_right_wall())
+        {
+            for(let i=0;i<paddle_max_speed;i++)
+            {
+                if(check_paddle_right_wall())
+                {
+                    erase_paddle_left_end();
+                    draw_paddle_right_end();
+                    paddle_x_position++;
+                }
+            }
+
+        }
+    }
+
+}
+
+
+//returns true if not against right wall
+function check_paddle_right_wall()
+{
+ 
+    if ((paddle_x_position+paddle_x_size)>=canvas_width)
+    {
+        return false;
+    }
+    return true;
+}
+
+
+
+//returns true if not against left wall
+function check_paddle_left_wall()
+{
+    if(paddle_x_position<=0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+function draw_paddle_right_end()
+{
+    for(let y=0;y<=paddle_y_size;y++)
+    {
+        write_one_blocker_array(paddle_x_size + paddle_x_position+1, y + paddle_y_position);
+    }
+}
+
+
+function draw_paddle_left_end()
+{
+    for(let y=0;y<=paddle_y_size;y++)
+    {
+        write_one_blocker_array(paddle_x_position-1, y + paddle_y_position);
+    }
+}
+
+
+function erase_paddle_right_end()
+{
+    for(let y=0;y<=paddle_y_size;y++)
+    {
+        write_zero_blocker_array(paddle_x_size + paddle_x_position, y + paddle_y_position);
+    }
+}
+
+
+function erase_paddle_left_end()
+{
+    for(let y=0;y<=paddle_y_size;y++)
+    {
+        write_zero_blocker_array(paddle_x_position, y + paddle_y_position);
+    }
+}
+
+
+
+//yes I cut and pasted draw_paddle to make erase_paddle
+function erase_paddle()
+{
+    for(let y=0;y<=paddle_y_size;y++)
+    {
+        for(let x=0;x<=paddle_x_size;x++)
+        {
+            write_zero_blocker_array(x + paddle_x_position, y + paddle_y_position);
+        }
+    }
+}
+
+
+function draw_paddle()
+{
+    for(let y=0;y<=paddle_y_size;y++)
+    {
+        for(let x=0;x<=paddle_x_size;x++)
+        {
+            write_one_blocker_array(x + paddle_x_position, y + paddle_y_position);
+        }
+    }
+}
+
+function init_ball_and_paddle()
+{
+    //set ball to the middle
+    //close to the bottom
+    //going straight down
+    ball_x_position=Math.round(canvas_width/2);
+    ball_y_position=Math.round(canvas_height-100);
+    ball_x_velocity=0;
+    ball_y_velocity=max_ball_speed;
+
+    paddle_x_position=Math.round(canvas_width/2);
+    paddle_y_position=Math.round(canvas_height-20);
+}
+
+
+
+
+function write_string(string_to_write,char_size,start_x,start_y)
+{
+    //ajusting for non-standard sizes
+    char_size=Math.round(char_size*(canvas_width/default_canvas_width)*(canvas_height/default_canvas_height));
+    start_x=Math.floor(start_x*(canvas_width/default_canvas_width));
+    start_y=Math.floor(start_y*(canvas_height/default_canvas_height));
+
+    if(char_size===0)
+    {
+        alert("warning screen size is too small to display all text");
+    }
+
+    //cur_x is x for next char
+    let cur_x=start_x;
+    let cur_y=start_y;
+
+    for(let string_pos=0;string_pos<string_to_write.length;string_pos++)
+    {
+        cur_char=string_to_write.charAt(string_pos);
+        if(cur_char==="\n")
+        {
+            //shifting y down by a character and restarting cur_x and cur_y
+            start_y+=char_size_height(char_size);
+            cur_x=start_x;
+            cur_y=start_y;
+        }
+        else
+        {
+            write_char(cur_char,char_size,cur_x,cur_y);
+            cur_x+=char_size_width(char_size);
+        }
+    }
+}
+
+
+function write_char(char_to_write,char_size,target_x,target_y)
+{
+    draw_pixel_block(target_x,target_y,char_to_block_to_write(char_to_write, char_size));
+}
+
+
+
+//converts the char to write into size 1 block to write
+function char_to_block_to_write(char_to_write, char_size)
+{
+    let text_block_to_write = generate_text_block_to_write(char_to_write);
+
+    let block_to_write_size1 =generate_array_block_to_write(1);
+
+    let y=0;
+    let x=0;
+    for(let i=0;i<text_block_to_write.length;i++)
+    {
+        //getting x and y
+        y=Math.floor(i/char_size1_width);
+        x=i%char_size1_width;
+
+        if(text_block_to_write.charAt(i)==="0")
+        {
+            block_to_write_size1[y][x]=0;
+        }
+        else if (text_block_to_write.charAt(i)==="+")
+        {
+            block_to_write_size1[y][x]=1;
+        }
+        else
+        {
+           // console.log("error in char_to_block_to_write, char not requonized");
+        }
+    }
+
+    //resizing as needed
+
+    block_to_write_size_needed =generate_array_block_to_write(char_size);
+
+
+    if(char_size===0)
+    {
+        //idea is if cur_average is negative write blanks
+        //else write all ones
+        let cur_average=0;
+        for(y=0;y<char_size1_height;y++)
+        {
+            for(x=0;x<char_size1_width;x++)
+            {
+                cur_average=(2*block_to_write_size1[y][x])-1;
+            }
+        }
+        let set_size0_bit=0;
+        if (cur_average<0)
+        {
+            set_size0_bit=0;
+        }
+        else
+        {
+            set_size0_bit=1;
+        }
+        for(y=0;y<char_size0_height;y++)
+        {
+            for(x=0;x<char_size0_width;x++)
+            {
+                block_to_write_size_needed[y][x] =set_size0_bit;
+            }
+        }
+    }
+    else if(char_size===1)
+    {
+        //techniqually this bit could be deleted and the else statement would handle it correctly
+        return  block_to_write_size1;
+    }
+    else
+    {
+        for(y=0;y<char_size_height(char_size);y++)
+        {
+            for(x=0;x<char_size_width(char_size);x++)
+            {
+                //idea is that go through array as size needed but compress x and y to size1 for reading from size 1
+                block_to_write_size_needed[y][x]=block_to_write_size1[Math.floor(y/char_size)][Math.floor(x/char_size)];
+            }
+        }
+    }
+
+
+    return block_to_write_size_needed;
+}
+
+
+
+
+function generate_array_block_to_write(char_size)
+{
+    //size 0 deviates from the pattern in the other sizes so has to be handled seperately
+    if(char_size==0)
+    {
+        return_array=new Array(char_size0_height);
+        for(let y=0;y<char_size0_height;y++)
+        {
+            return_array[y]=new Array(char_size0_width);
+            for(let x=0;x<(char_size0_width);x++)
+            {
+               return_array[y][x]=0;
+            }
+        }
+    }
+    else
+    {
+        //pattern for everything else is char_size1 dimensions times char_size
+        return_array=new Array(char_size_height(char_size));
+        for(let y=0;y<(char_size_height(char_size));y++)
+        {
+            return_array[y]=new Array(char_size_width(char_size));
+            for(let x=0;x<(char_size_width(char_size));x++)
+            {
+                return_array[y][x]=0;
+            }
+        }
+    }
+
+    return return_array;
+}
+
+function char_size_width(char_size)
+{  
+    if (char_size===0)
+    {
+        return char_size0_width;
+    }
+    else
+    {
+        return char_size1_width*char_size;
+    }
+}
+
+function char_size_height(char_size)
+{  
+    if (char_size===0)
+    {
+        return char_size0_height;
+    }
+    else
+    {
+        return char_size1_height*char_size;
+    }
+}
+
+
+//writes pixels relative to start_x and start_y
+function draw_pixel_block(start_x,start_y,block_to_write)
+{
+    for(let y=0;y<(block_to_write.length);y++)
+    {
+        for(let x=0;x<(block_to_write[y].length);x++)
+        {
+            write_blocker_array(x+start_x,y+start_y,block_to_write[y][x]);
+        }
+    }
+}
+
+
+
+
+function clear_blocker_array()
+{
+    for(let y=0;y<=canvas_height;y++)
+    {
+        for(let x=0;x<=canvas_width;x++)
+        {
+            write_blocker_array(x,y,0);
+        }
+    }
+}
+
+
+function draw_blocker_array()
+{
+    for(let y=0;y<=canvas_height;y++)
+    {
+        for(let x=0;x<=canvas_width;x++)
+        {
+           if(1===read_blocker_array(x, y))
+            {
+                graphical_draw_pixel(x,y);
+            }
+           else
+            {
+                graphical_erase_pixel(x,y);
+            }
+            
+        }
+    }
+}
+
+//yes this is more functions than strictly nessacary
+function write_blocker_array(target_x,target_y,bit_set)
+{
+    if(bit_set!==0)
+    {
+        write_one_blocker_array(target_x,target_y);
+    }
+    else
+    {
+        write_zero_blocker_array(target_x, target_y);
+    }
+}
+
+//this function exists to simplify writing zeros to the blocker_array
+function write_zero_blocker_array(target_x, target_y)
+{
+    //checking to see if anything actually needs doing
+    if(read_blocker_array(target_x, target_y)!==0)
+    {
+        blocker_array[target_y][Math.floor(target_x/max_bit_per_number)]-= 1<<(target_x%max_bit_per_number);
+        graphical_erase_pixel(target_x, target_y);
+    }
+}
+
+//this function exists to simplify writing ones to the blocker_array
+function write_one_blocker_array(target_x, target_y)
+{
+    //checking to see if anything actually needs doing
+    if(read_blocker_array(target_x, target_y)!==1)
+    {
+        blocker_array[target_y][Math.floor(target_x/max_bit_per_number)]+= 1<<(target_x%max_bit_per_number);
+        graphical_draw_pixel(target_x, target_y);
+    }
+}
+
+
+//this function exists to simplify reading
+function read_blocker_array(target_x, target_y)
+{
+
+    //getting a single number block for reading
+    let target_block=blocker_array[target_y][Math.floor(target_x/max_bit_per_number)];
+
+    //getting the desired bit
+    target_block=target_block>>(target_x%max_bit_per_number);
+
+    //for some reason it was giving -1 instead of 1
+    return (target_block%2)*(target_block%2);
+}
+ 
+//setting everything to 0
+function init_blocker_array()
+{
+    blocker_array_max_x=1+Math.ceil(default_canvas_width/max_bit_per_number);
+    console.log("blocker_array_max_x="+blocker_array_max_x);
+
+    //below was changed because the computer kept insisting on adding canvas_height and 1 like a string for some insane reason
+    //blocker_array_max_y= canvas_height+1;
+    blocker_array_max_y = canvas_height;
+    blocker_array_max_y++;
+
+    blocker_array= new Array( blocker_array_max_y);
+    console.log(blocker_array);
+
+    //var blocker_array[canvas_height + 1][Math.ceil(default_canvas_width/max_bit_per_number)];
+
+
+    for(let i=0;i<blocker_array.length;i++)
+    {
+        
+        //blocker_array[i]=Number.MAX_SAFE_INTEGER;
+        blocker_array[i]= new Array(blocker_array_max_x);
+        for(let j=0;j<blocker_array[i].length;j++)
+        {
+            blocker_array[i][j]=0;
+        }
+    }
+    
+}
+
+
+//start up generate canvas for putting stuff on
+function define_html_canvas()
+{
+    /*
+        <canvas
+        id="myCanvas"
+        width="3000"
+        height="4000"
+        style="background-color:#efefef;"
+      ></canvas>
+    */
+
+
+    let canvas_element = document.createElement("canvas");
+    canvas_element.setAttribute("id","myCanvas");
+    
+    //getting height and width
+    canvas_width=prompt("Please enter width", default_canvas_width);
+
+    //canvas_width=screen.availWidth;
+    canvas_element.setAttribute("width",canvas_width);
+ 
+    canvas_height=prompt("Please enter height", default_canvas_height)
+    //console.log(" canvas_height="+ canvas_height);
+    //canvas_height=screen.availHeight;
+    canvas_element.setAttribute("height",canvas_height);
+
+    canvas_element.setAttribute("style","background-color:#efefef;");
+
+    document.body.append(canvas_element);
+}
+
+function graphical_erase_pixel(start_x,start_y)
+{
+    var canvas = document.getElementById("myCanvas");
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(start_x, start_y, 1, 1);
+    pixel_screen_count--;
+}
+
+function graphical_draw_pixel(start_x,start_y)
+{
+    var canvas = document.getElementById("myCanvas");
+    var ctx = canvas.getContext("2d");
+    ctx.fillRect(start_x, start_y, 1, 1);
+    pixel_screen_count++;
+}
+
+
+//convert a string character into a 7 by 9 string for further conversion into an 2d array indicating where to put pixels
+//this is at the bottom of the javascript file because it is very long
+function generate_text_block_to_write(char_to_write)
+{
+  
+    let text_block_to_write;
+    //used as basis
+    //https://fontstruct.com/fontstructions/vote_breakdown/2045822/5x7-pixel-monospace-5
+
+    //I hard coded it because 7 by 9 is not that big and changing the dimensions is not happening easily anyway
+    //note that there is a 1 pixel border around the character
+
+    if(char_to_write==="")
+    {
+        //this if exists primarily so I can easily copy paste the space else if
+        console.log("char to write is null");
+        text_block_to_write="";
+    }
+    else if(char_to_write===" ")
+    {
+        //probably the most obvious pattern
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="a")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00+++00"+
+        "00000+0"+
+        "00++++0"+
+        "0+000+0"+
+        "00++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="b")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+00000"+
+        "0+00000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0++++00"+
+        "0000000";
+    }
+    else if(char_to_write==="c")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+00000"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="d")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00000+0"+
+        "00000+0"+
+        "00++++0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "00++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="e")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+++++0"+
+        "0+00000"+
+        "00++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="f")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000++00"+
+        "00+0000"+
+        "0+++++0"+
+        "00+0000"+
+        "00+0000"+
+        "00+0000"+
+        "00+0000"+
+        "0000000";
+    }
+    else if(char_to_write==="g")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00++++0"+
+        "0+000+0"+
+        "00++++0"+
+        "00000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="h")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+00000"+
+        "0+00000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="i")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000+000"+
+        "0000000"+
+        "0+++000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="j")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00000+0"+
+        "0000000"+
+        "000+++0"+
+        "00000+0"+
+        "00000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="k")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00+00"+
+        "0+++000"+
+        "0+00+00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="l")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="m")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0++0+00"+
+        "0+0+0+0"+
+        "0+0+0+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="n")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="o")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="p")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0++++00"+
+        "0+000+0"+
+        "0++++00"+
+        "0+00000"+
+        "0+00000"+
+        "0000000";
+    }
+    else if(char_to_write==="q")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00++++0"+
+        "0+000+0"+
+        "00++++0"+
+        "00000+0"+
+        "00000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="r")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+0++00"+
+        "0++00+0"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0000000";
+    }
+    else if(char_to_write==="s")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00++++0"+
+        "0+00000"+
+        "00+++00"+
+        "00000+0"+
+        "0++++00"+
+        "0000000";
+    }
+    else if(char_to_write==="t")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+0000"+
+        "00+0000"+
+        "0+++++0"+
+        "00+0000"+
+        "00+0000"+
+        "00+00+0"+
+        "000++00"+
+        "0000000";
+    }
+    else if(char_to_write==="u")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "00++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="v")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+0+00"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write==="w")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+0+0+0"+
+        "00+0+00"+
+        "0000000";
+    }
+    else if(char_to_write==="x")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+000+0"+
+        "00+0+00"+
+        "000+000"+
+        "00+0+00"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="y")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "00++++0"+
+        "00000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="z")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+++++0"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="A")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+++++0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="B")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0++++00"+
+        "0000000";
+    }
+    else if(char_to_write==="C")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="D")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0++++00"+
+        "0000000";
+    }
+    else if(char_to_write==="E")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "0+00000"+
+        "0+00000"+
+        "0++++00"+
+        "0+00000"+
+        "0+00000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="F")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "0+00000"+
+        "0+00000"+
+        "0++++00"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0000000";
+    }
+    else if(char_to_write==="G")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+00000"+
+        "0+00000"+
+        "0+00++0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="H")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+++++0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="I")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="J")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "00000+0"+
+        "00000+0"+
+        "00000+0"+
+        "00000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="K")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+00+00"+
+        "0+++000"+
+        "0+00+00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="L")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="M")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0++0++0"+
+        "0+0+0+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="N")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0++00+0"+
+        "0+0+0+0"+
+        "0+00++0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="O")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="P")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0++++00"+
+        "0+00000"+
+        "0+00000"+
+        "0+00000"+
+        "0000000";
+    }
+    else if(char_to_write==="Q")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+0+0+0"+
+        "0+00+00"+
+        "00++0+0"+
+        "0000000";
+    }
+    else if(char_to_write==="R")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="S")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00++++0"+
+        "0+00000"+
+        "0+00000"+
+        "00+++00"+
+        "00000+0"+
+        "00000+0"+
+        "0++++00"+
+        "0000000";
+    }
+    else if(char_to_write==="T")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write==="U")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="V")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+0+00"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write==="W")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+000+0"+
+        "0+0+0+0"+
+        "0++0++0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="X")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+0+00"+
+        "000+000"+
+        "00+0+00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000000";
+    }
+    else if(char_to_write==="Y")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+0+00"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write==="Z")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "00000+0"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "0+00000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="0")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+00++0"+
+        "0+0+0+0"+
+        "0++00+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="1")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000+000"+
+        "00++000"+
+        "0+0+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="2")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "00000+0"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="3")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "00000+0"+
+        "000++00"+
+        "00000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="4")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000++00"+
+        "00+0+00"+
+        "0+00+00"+
+        "0+++++0"+
+        "0000+00"+
+        "0000+00"+
+        "0000+00"+
+        "0000000";
+    }
+    else if(char_to_write==="5")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "0+00000"+
+        "0+00000"+
+        "0++++00"+
+        "00000+0"+
+        "00000+0"+
+        "0++++00"+
+        "0000000";
+    }
+    else if(char_to_write==="6")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+00000"+
+        "0+00000"+
+        "0++++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="7")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0+++++0"+
+        "00000+0"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "00+0000"+
+        "00+0000"+
+        "0000000";
+    }
+    else if(char_to_write==="8")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="9")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "00++++0"+
+        "00000+0"+
+        "00000+0"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write===".")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write===",")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "000+000"+
+        "000+000"+
+        "00+0000"+
+        "0000000";
+    }
+    else if(char_to_write==='"')
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+0+00"+
+        "00+0+00"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="'")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000+000"+
+        "000+000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="?")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+000+0"+
+        "0000+00"+
+        "000+000"+
+        "0000000"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write==="!")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "0000000"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write===" ")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="@")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+000+0"+
+        "0+0+++0"+
+        "0+0+0+0"+
+        "0+0+++0"+
+        "0+00000"+
+        "00+++00"+
+        "0000000";
+    }
+    else if(char_to_write==="_")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+++++0"+
+        "0000000";
+    }
+    else if(char_to_write==="*")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0+0+0+0"+
+        "00+++00"+
+        "0+++++0"+
+        "00+++00"+
+        "0+0+0+0"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="#")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+0+00"+
+        "00+0+00"+
+        "0+++++0"+
+        "00+0+00"+
+        "0+++++0"+
+        "00+0+00"+
+        "00+0+00"+
+        "0000000";
+    }
+    else if(char_to_write==="%")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0++0000"+
+        "0++00+0"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "0+00++0"+
+        "0000++0"+
+        "0000000";
+    }
+    else if(char_to_write==="&")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+++00"+
+        "0+00+00"+
+        "0+0+000"+
+        "00+0000"+
+        "0+0+0+0"+
+        "0+00+00"+
+        "00++0+0"+
+        "0000000";
+    }
+    else if(char_to_write==="(")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "00+0000"+
+        "00+0000"+
+        "000+000"+
+        "0000+00"+
+        "0000000";
+    }
+    else if(char_to_write===")")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+0000"+
+        "000+000"+
+        "0000+00"+
+        "0000+00"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "0000000";
+    }
+    else if(char_to_write==="+")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "000+000"+
+        "000+000"+
+        "0+++++0"+
+        "000+000"+
+        "000+000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="-")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0-----0"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="/")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "00000+0"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "0+00000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write===":")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "000+000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "000+000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write===";")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "000+000"+
+        "0000000"+
+        "0000000"+
+        "000+000"+
+        "000+000"+
+        "00+0000"+
+        "0000000";
+    }
+    else if(char_to_write==="<")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "000+000"+
+        "0000+00"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="=")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0+++++0"+
+        "0000000"+
+        "0+++++0"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write===">")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "00+0000"+
+        "000+000"+
+        "0000+00"+
+        "000+000"+
+        "00+0000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="[")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000++00"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000++00"+
+        "0000000";
+    }
+    else if(char_to_write==="^")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000+000"+
+        "00+0+00"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write==="{")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000+00"+
+        "000+000"+
+        "000+000"+
+        "00+0000"+
+        "000+000"+
+        "000+000"+
+        "0000+00"+
+        "0000000";
+    }
+    else if(char_to_write==="|")
+    {
+        text_block_to_write=
+        "0000000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "000+000"+
+        "0000000";
+    }
+    else if(char_to_write==="}")
+    {
+        text_block_to_write=
+        "0000000"+
+        "00+0000"+
+        "000+000"+
+        "000+000"+
+        "0000+00"+
+        "000+000"+
+        "000+000"+
+        "00+0000"+
+        "0000000";
+    }
+    else if(char_to_write==="~")
+    {
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "00+00+0"+
+        "0+0++00"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    else if(char_to_write===print_block_char)
+    {
+        text_block_to_write=
+        "+++++++"+
+        "+++++++"+
+        "+++++++"+
+        "+++++++"+
+        "+++++++"+
+        "+++++++"+
+        "+++++++"+
+        "+++++++"+
+        "+++++++";
+    }
+    else
+    {
+        console.log("char '"+char_to_write+"' not reqonized");
+        text_block_to_write=
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000"+
+        "0000000";
+    }
+    
+    
+    return text_block_to_write;
+}
+		</script>
+    </head>
+    <body>
+
+    </body>
+
+</html>
